@@ -76,6 +76,7 @@ typedef struct {
     char *user;
     char *plugin;
     char *plugin_opts;
+    int   plugin_mode;
     int fast_open;
     int reuse_port;
     int tcp_incoming_sndbuf;
@@ -107,6 +108,7 @@ void parse_addr(const char *str, ss_addr_t *addr);
 void free_addr(ss_addr_t *addr);
 int parse_server_endpoint(const char *str, ss_addr_t *addr);
 int complete_server_ports(ss_addr_t *addr, int count, const char *fallback, int plugin);
+int parse_plugin_mode(const char *mode_str);
 
 #ifdef __cplusplus
 }

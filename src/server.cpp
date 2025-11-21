@@ -826,6 +826,7 @@ main(int argc, char **argv)
 
     char *server_port = NULL;
     char *plugin_opts = NULL;
+    int plugin_mode = TCP_ONLY;
     char *plugin_host = NULL;
     char *plugin_port = NULL;
     char tmp_port[8];
@@ -980,6 +981,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 \snippet{doc} utils.cpp cli_long_help
 \snippet{doc} utils.cpp cli_long_plugin
 \snippet{doc} utils.cpp cli_long_plugin_opts
+\snippet{doc} utils.cpp cli_long_plugin_mode
 \snippet{doc} utils.cpp cli_long_password
 \snippet{doc} utils.cpp cli_long_key
 \snippet{doc} utils.cpp cli_long_mptcp
@@ -1021,6 +1023,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         { "help",            no_argument,       NULL, GETOPT_VAL_HELP        },
         { "plugin",          required_argument, NULL, GETOPT_VAL_PLUGIN      },
         { "plugin-opts",     required_argument, NULL, GETOPT_VAL_PLUGIN_OPTS },
+        { "plugin-mode", required_argument, NULL, GETOPT_VAL_PLUGIN_MODE },
         { "password",        required_argument, NULL, GETOPT_VAL_PASSWORD    },
         { "key",             required_argument, NULL, GETOPT_VAL_KEY         },
 #ifdef __linux__
@@ -1033,6 +1036,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     };
 
     int mode_set = 0;
+    int plugin_mode_set = 0;
     int ipv6first_set = 0;
     opterr = 0;
 
@@ -1092,6 +1096,10 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             break;
         case GETOPT_VAL_PLUGIN_OPTS:
             plugin_opts = optarg;
+            break;
+        case GETOPT_VAL_PLUGIN_MODE:
+            plugin_mode = parse_plugin_mode(optarg);
+            plugin_mode_set = 1;
             break;
         case GETOPT_VAL_MPTCP:
             mptcp = get_mptcp(1);
@@ -1258,6 +1266,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         if (plugin_opts == NULL) {
             plugin_opts = conf->plugin_opts;
         }
+        if (!plugin_mode_set) {
+            plugin_mode = conf->plugin_mode;
+        }
         if (!mode_set) {
             mode = conf->mode;
         }
@@ -1376,7 +1387,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 #endif
 
     if (plugin != NULL) {
-        uint16_t port = get_local_port();
+        if (plugin_mode == UDP_ONLY && mode == TCP_AND_UDP) {
+            FATAL("plugin_mode cannot be 'udp_only' when both TCP and UDP relay are enabled");
+        }
+        int with_udp = mode != TCP_ONLY && plugin_mode != TCP_ONLY;
+        uint16_t port = get_local_port(with_udp);
         if (port == 0) {
             FATAL("failed to find a free port");
         }
@@ -1386,7 +1401,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
 #ifdef __MINGW32__
         memset(&plugin_watcher, 0, sizeof(plugin_watcher));
-        plugin_watcher.port = get_local_port();
+        plugin_watcher.port = get_local_port(0);
         if (plugin_watcher.port == 0) {
             LOGE("failed to assign a control port for plugin");
         }
@@ -1528,7 +1543,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 #ifdef __MINGW32__
                                plugin_watcher.port,
 #endif
-                               MODE_SERVER);
+                               ROLE_SERVER);
         if (err) {
             ERROR("start_plugin");
             FATAL("failed to start the plugin");
@@ -1646,7 +1661,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             const char *host = server_addr[i].host;
             const char *port = server_addr[i].port ? server_addr[i].port : server_port;
             if (plugin != NULL) {
-                port = plugin_port;
+                if (plugin_mode == TCP_ONLY) {
+                    port = plugin_port;
+                } else {
+                    host = plugin_host;
+                }
             }
             if (host && ss_is_ipv6addr(host))
                 LOGI("udp server listening at [%s]:%s", host, port);
