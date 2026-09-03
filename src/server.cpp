@@ -1387,10 +1387,10 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 #endif
 
     if (plugin != NULL) {
-        if (plugin_mode == UDP_ONLY && mode != UDP_ONLY) {
-            FATAL("plugin_mode 'udp_only' requires UDP-only relay mode");
+        if (!plugin_mode_is_subset(plugin_mode, mode)) {
+            FATAL("plugin_mode must be a subset of mode");
         }
-        int with_udp = mode != TCP_ONLY && plugin_mode != TCP_ONLY;
+        int with_udp = mode_has_udp(mode) && mode_has_udp(plugin_mode);
         uint16_t port = get_local_port(with_udp);
         if (port == 0) {
             FATAL("failed to find a free port");
@@ -1604,7 +1604,12 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             const char *port = server_addr[i].port ? server_addr[i].port : server_port;
 
             if (plugin != NULL) {
-                host = plugin_host;
+                if (mode_has_tcp(plugin_mode)) {
+                    host = plugin_host;
+                    port = server_port;
+                } else if (server_addr[i].port == NULL) {
+                    port = plugin_port;
+                }
             }
 
             if (host && ss_is_ipv6addr(host))
@@ -1630,7 +1635,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
             num_listen_ctx++;
 
-            if (plugin != NULL)
+            if (plugin != NULL && mode_has_tcp(plugin_mode))
                 break;
         }
 
@@ -1661,10 +1666,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             const char *host = server_addr[i].host;
             const char *port = server_addr[i].port ? server_addr[i].port : server_port;
             if (plugin != NULL) {
-                if (plugin_mode == TCP_ONLY) {
+                if (!mode_has_udp(plugin_mode)) {
                     port = plugin_port;
                 } else {
                     host = plugin_host;
+                    port = server_port;
                 }
             }
             if (host && ss_is_ipv6addr(host))
@@ -1680,6 +1686,8 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
                 continue;
             }
             num_listen_ctx++;
+            if (plugin != NULL && mode_has_udp(plugin_mode))
+                break;
         }
 
         if (num_listen_ctx == 0) {
